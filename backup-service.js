@@ -30,7 +30,7 @@ async function startBackup() {
         // Dump database command (using ProxySQL port and flags)
         const dumpPort = process.env.DB_PORT || 6033;
 
-        const dumpCommand = `mysqldump -h ${process.env.DB_HOST} -P ${dumpPort} -u ${process.env.DB_USER} -p${process.env.DB_PASS} --set-gtid-purged=OFF --column-statistics=0 ${process.env.DB_NAME} | gzip > ${localPath}`;
+        const dumpCommand = `mysqldump -h ${process.env.DB_HOST} -P ${dumpPort} -u ${process.env.DB_USER} -p${process.env.DB_PASS} --single-transaction --set-gtid-purged=OFF --column-statistics=0 ${process.env.DB_NAME} | gzip > ${localPath}`;
 
         // Call tool to backup database
         await new Promise((resolve, reject) => {
