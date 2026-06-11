@@ -4,6 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { exec } = require('child_process');
 const cron = require('node-cron');
 const { google } = require('googleapis');
+const { cleanOldBackups } = require('./utils');
 
 // Init Google Drive API via OAuth2
 const oauth2Client = new google.auth.OAuth2(
@@ -28,7 +29,7 @@ async function startBackup() {
     try {
         // Dump database command (using ProxySQL port and flags)
         const dumpPort = process.env.DB_PORT || 6033;
-        
+
         const dumpCommand = `mysqldump -h ${process.env.DB_HOST} -P ${dumpPort} -u ${process.env.DB_USER} -p${process.env.DB_PASS} --set-gtid-purged=OFF --column-statistics=0 ${process.env.DB_NAME} | gzip > ${localPath}`;
 
         // Call tool to backup database
@@ -54,10 +55,13 @@ async function startBackup() {
         console.error(`Error when backing up DB`, error.message);
         throw error;
     } finally {
-        // Clean up temp file
-        if (fs.existsSync(localPath)) {
-            fs.unlinkSync(localPath);
-            console.log(`Cleaned up temp file: ${localPath}`);
+        console.log(`Backup file saved locally at: ${localPath}`);
+
+        // Deleting old backup over 7 days
+        try {
+            cleanOldBackups(__dirname, process.env.DB_NAME, 7);
+        } catch (cleanErr) {
+            console.error('Failed to clean old backups:', cleanErr.message);
         }
     }
 };
@@ -76,4 +80,4 @@ cron.schedule(process.env.CRON_SCHEDULE || '0 * * * *', () => {
         console.error('Backup failed:', error.message);
     });
 });
-
+
