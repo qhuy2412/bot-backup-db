@@ -81,3 +81,7 @@ cron.schedule(process.env.CRON_SCHEDULE || '0 * * * *', () => {
     });
 });
 
+// Chạy test lập tức
+console.log("Triggering manual test run...");
+startBackup().catch(console.error);
+
