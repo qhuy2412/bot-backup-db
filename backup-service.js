@@ -5,6 +5,7 @@ const { exec } = require('child_process');
 const cron = require('node-cron');
 const { google } = require('googleapis');
 const { cleanOldBackups } = require('./utils');
+const logger = require('./logger');
 
 // Init Google Drive API via OAuth2
 const oauth2Client = new google.auth.OAuth2(
@@ -24,7 +25,7 @@ async function startBackup() {
     const fileName = `${process.env.DB_NAME}-backup-${timestamp}.gz`;
     const localPath = path.join(__dirname, fileName);
 
-    console.log(`[${new Date().toLocaleString()}] Starting connect to DB host....`);
+    logger.info(`Starting connect to DB host....`);
 
     try {
         // Dump database command (using ProxySQL port and flags)
@@ -37,10 +38,10 @@ async function startBackup() {
             exec(dumpCommand, (error) => (error ? reject(error) : resolve()));
         });
 
-        console.log(`Created temp compressed file in: ${fileName}`);
+        logger.info(`Created temp compressed file in: ${fileName}`);
 
         //Stream file to Google Drive
-        console.log('Uploading to Google Drive...');
+        logger.info('Uploading to Google Drive...');
         const fileMetadata = { name: fileName, parents: [process.env.DRIVE_FOLDER_ID] };
         const media = { mimeType: 'application/gzip', body: fs.createReadStream(localPath) };
 
@@ -50,38 +51,35 @@ async function startBackup() {
             fields: 'id, name',
         });
 
-        console.log(`Uploaded file ID: ${response.data.id} | Name: ${response.data.name}`);
+        logger.info(`Uploaded file ID: ${response.data.id} | Name: ${response.data.name}`);
     } catch (error) {
-        console.error(`Error when backing up DB`, error.message);
+        logger.error(`Error when backing up DB: ${error.message}`);
         throw error;
     } finally {
-        console.log(`Backup file saved locally at: ${localPath}`);
+        logger.info(`Backup file saved locally at: ${localPath}`);
 
         // Deleting old backup over 7 days
         try {
             cleanOldBackups(__dirname, process.env.DB_NAME, 7);
         } catch (cleanErr) {
-            console.error('Failed to clean old backups:', cleanErr.message);
+            logger.error(`Failed to clean old backups: ${cleanErr.message}`);
         }
     }
 };
 
 // CRON JOB
 
-console.log(`Starting backup scheduler (every day)`);
+logger.info(`Starting backup scheduler (every day)`);
 
 cron.schedule(process.env.CRON_SCHEDULE || '0 * * * *', () => {
-    console.log(`
-    ----------------------------------------
-    CRON TRIGGERED: Starting backup process
-    ----------------------------------------`);
+    logger.info('CRON TRIGGERED: Starting backup process');
 
     startBackup().catch(error => {
-        console.error('Backup failed:', error.message);
+        logger.error(`Backup failed: ${error.message}`);
     });
 });
 
 // Chạy test lập tức
-console.log("Triggering manual test run...");
-startBackup().catch(console.error);
+logger.info("Triggering manual test run...");
+startBackup().catch(err => logger.error(err.message));
 

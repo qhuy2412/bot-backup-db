@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const logger = require('./logger');
 
 function cleanOldBackups(backupDir, dbName, retentionDays = 7) {
-    console.log(`Checking for local backups older than ${retentionDays} days...`);
+    logger.info(`Checking for local backups older than ${retentionDays} days...`);
     const files = fs.readdirSync(backupDir);
     const now = Date.now();
     const msInDay = 24 * 60 * 60 * 1000;
@@ -16,13 +17,13 @@ function cleanOldBackups(backupDir, dbName, retentionDays = 7) {
 
             if (ageInDays > retentionDays) {
                 fs.unlinkSync(filePath);
-                console.log(`Deleted old local backup file: ${file}`);
+                logger.info(`Deleted old local backup file: ${file}`);
                 deletedCount++;
             }
         }
     }
     if (deletedCount > 0) {
-        console.log(`Cleanup complete. Removed ${deletedCount} old backup(s) from server.`);
+        logger.info(`Cleanup complete. Removed ${deletedCount} old backup(s) from server.`);
     }
 }
 
