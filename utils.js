@@ -24,6 +24,8 @@ function cleanOldBackups(backupDir, dbName, retentionDays = 7) {
     }
     if (deletedCount > 0) {
         logger.info(`Cleanup complete. Removed ${deletedCount} old backup(s) from server.`);
+    } else {
+        logger.info(`Cleanup complete. No old backups found to remove.`);
     }
 }
 

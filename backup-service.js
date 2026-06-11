@@ -64,6 +64,8 @@ async function startBackup() {
         } catch (cleanErr) {
             logger.error(`Failed to clean old backups: ${cleanErr.message}`);
         }
+        
+        logger.info("Backup workflow completed successfully. Waiting for next schedule...");
     }
 };
 
