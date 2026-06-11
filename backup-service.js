@@ -22,7 +22,7 @@ const drive = google.drive({ version: 'v3', auth: oauth2Client });
 
 async function startBackup() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `${process.env.DB_NAME}-backup-${timestamp}.gz`;
+    const fileName = `${process.env.DB_NAME}-backup-${timestamp}.sql.gz`;
     const localPath = path.join(__dirname, fileName);
 
     logger.info(`Starting connect to DB host....`);
@@ -64,7 +64,7 @@ async function startBackup() {
         } catch (cleanErr) {
             logger.error(`Failed to clean old backups: ${cleanErr.message}`);
         }
-        
+
         logger.info("Backup workflow completed successfully. Waiting for next schedule...");
     }
 };
