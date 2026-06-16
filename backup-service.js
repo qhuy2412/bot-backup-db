@@ -2,10 +2,23 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { exec } = require('child_process');
-const cron = require('node-cron');
+const mysql = require('mysql2/promise');
 const { google } = require('googleapis');
 const { cleanOldBackups } = require('./utils');
 const logger = require('./logger');
+
+// Database configuration
+const dbConfig = {
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
+  port: parseInt(process.env.DB_PORT) || 3306,
+  ssl: process.env.DB_SSL === 'true' ? {
+    minVersion: 'TLSv1.2',
+    rejectUnauthorized: true,
+  } : null,
+};
 
 // Init Google Drive API via OAuth2
 const oauth2Client = new google.auth.OAuth2(
@@ -65,23 +78,61 @@ async function startBackup() {
             logger.error(`Failed to clean old backups: ${cleanErr.message}`);
         }
 
-        logger.info("Backup workflow completed successfully. Waiting for next schedule...");
+        logger.info("Backup workflow completed successfully.");
     }
+}
+
+const pollAndExecuteBackup = async () => {
+  let conn;
+  let jobId = null;
+  try {
+    conn = await mysql.createConnection(dbConfig);
+    await conn.beginTransaction();
+    const [rows] = await conn.execute(
+      `SELECT id FROM job_queue
+       WHERE job_type = 'db_backup' AND status = 'PENDING' AND run_at <= NOW()
+       LIMIT 1 FOR UPDATE SKIP LOCKED`
+    );
+    if (rows.length === 0) {
+      await conn.commit();
+      return;
+    }
+
+    jobId = rows[0].id;
+    await conn.execute(
+      `UPDATE job_queue SET status = 'RUNNING', started_at = NOW() WHERE id = ?`, [jobId]
+    );
+    await conn.commit();
+
+    logger.info(`[Queue] Claimed backup job ID: ${jobId}. Starting backup execution.`);
+    // Execute actual backup
+    await startBackup();
+
+    await conn.execute(
+      `UPDATE job_queue SET status = 'COMPLETED', completed_at = NOW() WHERE id = ?`, [jobId]
+    );
+    logger.info(`[Queue] Backup job ID: ${jobId} completed successfully.`);
+  } catch (err) {
+    logger.error(`[Queue] Backup job failed: ${err.message}`);
+    if (jobId && conn) {
+      try {
+        await conn.execute(
+          `UPDATE job_queue SET status = 'FAILED', error_message = ?, completed_at = NOW() WHERE id = ?`,
+          [err.message, jobId]
+        );
+      } catch (dbErr) {
+        logger.error(`[Queue] Failed to update job status to FAILED in DB: ${dbErr.message}`);
+      }
+    }
+  } finally {
+    if (conn) {
+      try {
+        await conn.end();
+      } catch (_) {}
+    }
+  }
 };
 
-// CRON JOB
-
-logger.info(`Starting backup scheduler (every day)`);
-
-cron.schedule(process.env.CRON_SCHEDULE || '0 * * * *', () => {
-    logger.info('CRON TRIGGERED: Starting backup process');
-
-    startBackup().catch(error => {
-        logger.error(`Backup failed: ${error.message}`);
-    });
-});
-
-// Chạy test lập tức
-logger.info("Triggering manual test run...");
-startBackup().catch(err => logger.error(err.message));
-
+logger.info(`Starting backup queue worker (polling every 60s)`);
+setInterval(pollAndExecuteBackup, 60 * 1000);
+pollAndExecuteBackup(); // Run immediately on startup
