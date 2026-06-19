@@ -48,15 +48,23 @@ async function pollAndExecuteJob(executeBackupCallback) {
     );
     logger.info(`[Queue] Backup job ID: ${jobId} completed successfully.`);
   } catch (err) {
-    logger.error(`[Queue] Backup job failed: ${err.message}`);
-    if (jobId && conn) {
-      try {
-        await conn.execute(
-          `UPDATE job_queue SET status = 'FAILED', error_message = ?, completed_at = NOW() WHERE id = ?`,
-          [err.message.substring(0, 500), jobId] // Limit error message length
-        );
-      } catch (dbErr) {
-        logger.error(`[Queue] Failed to update job status to FAILED in DB: ${dbErr.message}`);
+    if (jobId) {
+      logger.error(`[Queue] Backup job ID: ${jobId} failed: ${err.message}`);
+      if (conn) {
+        try {
+          await conn.execute(
+            `UPDATE job_queue SET status = 'FAILED', error_message = ?, completed_at = NOW() WHERE id = ?`,
+            [err.message.substring(0, 500), jobId] // Limit error message length
+          );
+        } catch (dbErr) {
+          logger.error(`[Queue] Failed to update job status to FAILED in DB: ${dbErr.message}`);
+        }
+      }
+    } else {
+      if (err.message && err.message.includes('--read-only')) {
+        logger.info(`[Queue] Polling skipped: MySQL server is read-only.`);
+      } else {
+        logger.error(`[Queue] Polling error: ${err.message}`);
       }
     }
   } finally {
